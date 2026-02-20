@@ -60,6 +60,7 @@ button:hover{background:#0ff;color:#000}
   <div class="mb" id="mr">▶</div>
 </div>
 <script>
+// 简化的游戏逻辑 - 确保基础功能可用
 var cv = document.getElementById('gc');
 var ctx = cv.getContext('2d');
 var W, H;
@@ -71,192 +72,27 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
-// Audio System
-var audioCtx = null;
-var masterGain = null;
-var bgmPlaying = false;
-var bgmTimer = null;
+// 游戏状态
+var state = 'menu';
+var score = 0, level = 1;
+var player, platforms, coins, particles;
 
-function initAudio() {
-  if (!audioCtx) {
-    try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.5;
-      masterGain.connect(audioCtx.destination);
-    } catch(e) {}
-  }
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-}
-
-function playNote(freq, dur, type, vol, delay) {
-  if (!audioCtx) return;
-  try {
-    var t = audioCtx.currentTime + (delay || 0);
-    var o = audioCtx.createOscillator();
-    var g = audioCtx.createGain();
-    o.type = type || 'sine';
-    o.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(vol || 0.08, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g); g.connect(masterGain);
-    o.start(t); o.stop(t + dur);
-  } catch(e) {}
-}
-
-function playSweep(f1, f2, dur, type, vol) {
-  if (!audioCtx) return;
-  try {
-    var t = audioCtx.currentTime;
-    var o = audioCtx.createOscillator();
-    var g = audioCtx.createGain();
-    o.type = type || 'sine';
-    o.frequency.setValueAtTime(f1, t);
-    o.frequency.exponentialRampToValueAtTime(f2, t + dur);
-    g.gain.setValueAtTime(vol || 0.08, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g); g.connect(masterGain);
-    o.start(t); o.stop(t + dur);
-  } catch(e) {}
-}
-
-function playNoise(dur, vol) {
-  if (!audioCtx) return;
-  try {
-    var t = audioCtx.currentTime;
-    var bufSize = audioCtx.sampleRate * dur;
-    var buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-    var data = buf.getChannelData(0);
-    for (var i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1);
-    var src = audioCtx.createBufferSource();
-    src.buffer = buf;
-    var g = audioCtx.createGain();
-    g.gain.setValueAtTime(vol || 0.05, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    var filt = audioCtx.createBiquadFilter();
-    filt.type = 'lowpass';
-    filt.frequency.value = 800;
-    src.connect(filt); filt.connect(g); g.connect(masterGain);
-    src.start(t); src.stop(t + dur);
-  } catch(e) {}
-}
-
-// Sound effects
-var sfx = {
-  jump: function() {
-    playSweep(320, 680, 0.15, 'sine', 0.1);
-    playSweep(160, 340, 0.12, 'triangle', 0.04);
-  },
-  land: function() {
-    playNoise(0.06, 0.08);
-    playNote(100, 0.08, 'sine', 0.06);
-  },
-  coin: function(comboN) {
-    var base = 660 + Math.min(comboN, 10) * 60;
-    playNote(base, 0.08, 'square', 0.06);
-    playNote(base * 1.25, 0.1, 'sine', 0.08, 0.06);
-    playNote(base * 1.5, 0.15, 'sine', 0.06, 0.12);
-  },
-  comboHit: function(n) {
-    var base = 500 + n * 80;
-    playSweep(base, base * 1.5, 0.2, 'square', 0.05);
-    playNote(base * 1.5, 0.15, 'sine', 0.07, 0.1);
-  },
-  die: function() {
-    playSweep(500, 80, 0.5, 'sawtooth', 0.12);
-    playNoise(0.4, 0.1);
-    playNote(80, 0.6, 'sine', 0.08, 0.1);
-  },
-  spike: function() {
-    playSweep(900, 100, 0.3, 'square', 0.1);
-    playNoise(0.25, 0.12);
-    playNote(60, 0.4, 'triangle', 0.08);
-  },
-  levelUp: function() {
-    var notes = [523, 659, 784, 1047];
-    for (var i = 0; i < notes.length; i++) {
-      playNote(notes[i], 0.3, 'sine', 0.08, i * 0.1);
-      playNote(notes[i] * 0.5, 0.3, 'triangle', 0.04, i * 0.1);
-    }
-    playNoise(0.08, 0.04);
-  },
-  win: function() {
-    var melody = [523, 659, 784, 1047, 784, 1047, 1319, 1568];
-    for (var i = 0; i < melody.length; i++) {
-      playNote(melody[i], 0.35, 'sine', 0.07, i * 0.12);
-      playNote(melody[i] * 0.75, 0.35, 'triangle', 0.04, i * 0.12);
-    }
-    setTimeout(function() {
-      playNote(1568, 0.8, 'sine', 0.1);
-      playNote(1175, 0.8, 'sine', 0.06);
-      playNote(784, 0.8, 'triangle', 0.05);
-    }, melody.length * 120);
-  },
-  menuClick: function() {
-    playNote(800, 0.06, 'square', 0.06);
-    playNote(1200, 0.1, 'sine', 0.08, 0.04);
-  }
-};
-
-// Background music - procedural beat
-var bgmStep = 0;
-var bgmBPM = 140;
-var bgmPattern = [1,0,0,1, 0,1,0,0, 1,0,1,0, 0,0,1,0];
-var bgmBass =    [130,0,0,130, 0,165,0,0, 175,0,130,0, 0,0,165,0];
-var bgmMelody =  [0,0,523,0, 0,0,659,0, 0,0,784,0, 659,0,0,0];
-
-function bgmTick() {
-  if (state !== 'play' || !audioCtx) return;
-  var idx = bgmStep % 16;
-
-  // Kick drum
-  if (bgmPattern[idx]) {
-    playSweep(150, 40, 0.1, 'sine', 0.1);
-    playNoise(0.04, 0.04);
-  }
-  // Hi-hat on off-beats
-  if (idx % 2 === 1) {
-    playNoise(0.03, 0.02);
-  }
-  // Bass
-  if (bgmBass[idx]) {
-    playNote(bgmBass[idx], 0.12, 'triangle', 0.06);
-  }
-  // Melody (quiet, atmospheric)
-  if (bgmMelody[idx] && Math.random() < 0.6) {
-    playNote(bgmMelody[idx], 0.2, 'sine', 0.025);
-  }
-
-  bgmStep++;
-}
-
-function startBGM() {
-  if (bgmPlaying) return;
-  bgmPlaying = true;
-  bgmStep = 0;
-  var interval = 60000 / bgmBPM / 4; // 16th notes
-  bgmTimer = setInterval(bgmTick, interval);
-}
-
-function stopBGM() {
-  bgmPlaying = false;
-  if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; }
-}
-
-// Legacy beep for compatibility
-function beep(freq, dur, type, vol) {
-  playNote(freq, dur, type, vol);
-}
-
-// Input
+// 输入控制
 var keys = {};
 var ml = 0, mr = 0, mj = 0;
+
 window.addEventListener('keydown', function(e) {
   keys[e.code] = true;
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].indexOf(e.code) >= 0) e.preventDefault();
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD'].includes(e.code)) {
+    e.preventDefault();
+  }
 });
-window.addEventListener('keyup', function(e) { keys[e.code] = false; });
 
+window.addEventListener('keyup', function(e) {
+  keys[e.code] = false;
+});
+
+// 触摸控制
 function touchBind(id, cb) {
   var el = document.getElementById(id);
   el.addEventListener('touchstart', function(e) { e.preventDefault(); cb(1); }, {passive:false});
@@ -264,491 +100,195 @@ function touchBind(id, cb) {
   el.addEventListener('mousedown', function(e) { cb(1); });
   el.addEventListener('mouseup', function(e) { cb(0); });
 }
+
 touchBind('ml', function(v){ml=v});
 touchBind('mr', function(v){mr=v});
 touchBind('mbj', function(v){mj=v});
 
-// Game state
-var state = 'menu'; // menu, play, dead, won
-var score = 0, level = 1, combo = 0;
-var camY = 0, shake = 0;
-var player, platforms, coins, spikes, goalStar, particles;
-
-var themes = [
-  {bg:'#0a0a2a', plat:'#00e5ff', accent:'#ff00ff'},
-  {bg:'#0a1a0a', plat:'#00ff88', accent:'#ffee00'},
-  {bg:'#1a0a0a', plat:'#ff5555', accent:'#ff8800'},
-  {bg:'#0a0a3e', plat:'#8888ff', accent:'#ff44ff'},
-  {bg:'#1a1a00', plat:'#ffdd00', accent:'#00ffff'}
-];
-
-// Stars background
-var stars = [];
-for (var i = 0; i < 120; i++) {
-  stars.push({x: Math.random() * 2000, y: Math.random() * 12000, s: Math.random() * 2 + 0.5});
-}
-
-// Particles
-function addParticle(x, y, vx, vy, color, life) {
-  particles.push({x:x, y:y, vx:vx, vy:vy, color:color, life:life, max:life, sz: 2 + Math.random()*3});
-}
-function burst(x, y, n, speed, color, life) {
-  for (var i = 0; i < n; i++) {
-    var a = Math.random() * Math.PI * 2;
-    var s = speed * (0.3 + Math.random() * 0.7);
-    addParticle(x, y, Math.cos(a)*s, Math.sin(a)*s, color, life * (0.5 + Math.random()*0.5));
-  }
-}
-
+// 生成关卡
 function generateLevel(lv) {
   platforms = [];
   coins = [];
-  spikes = [];
   particles = [];
-  goalStar = null;
-
-  // Ground - very visible, full width, thick
-  platforms.push({x: 0, y: H - 50, w: W, h: 50, ground: true, moving: false});
-
-  // Player starts on ground
+  
+  // 地面 - 非常显眼
+  platforms.push({x: 0, y: H - 50, w: W, h: 50, ground: true});
+  
+  // 玩家
   player = {
     x: W/2 - 16, y: H - 50 - 36, w: 32, h: 36,
-    vx: 0, vy: 0, onGround: false, jumpBuffer: 0, coyoteTime: 0,
-    face: 1, trail: []
+    vx: 0, vy: 0, onGround: true
   };
-
-  var platCount = 8 + lv * 3;
+  
+  // 平台
+  var platCount = 6 + lv * 2;
   var curY = H - 50;
   var curX = W / 2;
-
+  
   for (var i = 0; i < platCount; i++) {
-    var pw = 80 + Math.random() * 50;
-    curY -= 60 + Math.random() * 20;
-    curX += (Math.random() - 0.5) * 200;
-    curX = Math.max(20, Math.min(W - pw - 20, curX));
-
-    var isMoving = lv >= 3 && i > 3 && Math.random() < 0.2;
-    var p = {x: curX, y: curY, w: pw, h: 16, ground: false, moving: isMoving};
-    if (isMoving) {
-      p.baseX = curX;
-      p.range = 30 + Math.random() * 40;
-      p.speed = 0.8 + Math.random() * 0.5;
-      p.phase = Math.random() * 6.28;
-    }
-    platforms.push(p);
-
-    // Coins
-    if (Math.random() < 0.5) {
-      coins.push({x: curX + pw/2, y: curY - 24, collected: false, phase: Math.random() * 6.28});
-    }
-
-    // Spikes from level 2
-    if (lv >= 2 && i > 2 && Math.random() < 0.1) {
-      var sw = pw * 0.3;
-      spikes.push({x: curX + (pw - sw)/2, y: curY - 12, w: sw, h: 12});
+    curY -= 55 + Math.random() * 25;
+    curX += (Math.random() - 0.5) * 180;
+    curX = Math.max(30, Math.min(W - 110, curX));
+    
+    platforms.push({x: curX, y: curY, w: 80, h: 16});
+    
+    // 金币
+    if (Math.random() < 0.6) {
+      coins.push({x: curX + 40, y: curY - 20, collected: false});
     }
   }
-
-  // Goal star at top
-  goalStar = {x: curX + 40, y: curY - 60};
-  camY = 0;
-  combo = 0;
 }
 
+// 更新游戏逻辑
 function updateGame(dt) {
   if (!player) return;
-
-  var SPEED = 280, ACCEL = 1500, FRICTION = 0.82, GRAVITY = 1100, JUMP_VEL = -480;
-
-  // Input
+  
+  var SPEED = 300, ACCEL = 1800, FRICTION = 0.85, GRAVITY = 1200, JUMP_VEL = -500;
+  
+  // 输入
   var ix = 0;
   if (keys.ArrowLeft || keys.KeyA || ml) ix = -1;
   if (keys.ArrowRight || keys.KeyD || mr) ix = 1;
-  if (ix !== 0) player.face = ix;
-
-  // Horizontal movement
+  
+  // 水平移动
   player.vx += ix * ACCEL * dt;
   player.vx *= Math.pow(FRICTION, dt * 60);
   if (Math.abs(player.vx) > SPEED) player.vx = Math.sign(player.vx) * SPEED;
-  if (ix === 0 && Math.abs(player.vx) < 8) player.vx = 0;
-
-  // Jump
+  
+  // 跳跃
   var wantJump = keys.ArrowUp || keys.KeyW || keys.Space || mj;
-  if (wantJump && player.jumpBuffer <= 0) player.jumpBuffer = 0.12;
-  if (!wantJump) player.jumpBuffer = 0;
-  else player.jumpBuffer -= dt;
-
-  if (player.onGround) player.coyoteTime = 0.1;
-  else player.coyoteTime -= dt;
-
-  if (player.jumpBuffer > 0 && player.coyoteTime > 0) {
+  if (wantJump && player.onGround) {
     player.vy = JUMP_VEL;
-    player.jumpBuffer = 0;
-    player.coyoteTime = 0;
-    sfx.jump();
-    burst(player.x + player.w/2, player.y + player.h, 5, 80, '#fff', 0.4);
+    player.onGround = false;
   }
-
-  // Gravity
+  
+  // 重力
   player.vy += GRAVITY * dt;
-  if (player.vy > 700) player.vy = 700;
-
-  // Move
+  
+  // 移动
   player.x += player.vx * dt;
   player.y += player.vy * dt;
-
-  // Platform collision
+  
+  // 平台碰撞
   player.onGround = false;
   for (var i = 0; i < platforms.length; i++) {
     var p = platforms[i];
-    if (p.moving) {
-      p.phase += p.speed * dt;
-      p.x = p.baseX + Math.sin(p.phase) * p.range;
-    }
     if (player.vy >= 0 &&
-        player.x + player.w > p.x + 4 &&
-        player.x < p.x + p.w - 4 &&
+        player.x + player.w > p.x &&
+        player.x < p.x + p.w &&
         player.y + player.h >= p.y &&
-        player.y + player.h <= p.y + 18) {
+        player.y + player.h <= p.y + 20) {
       player.y = p.y - player.h;
       player.vy = 0;
-      if (!player.onGround) sfx.land();
       player.onGround = true;
     }
   }
-
-  // Screen wrap
+  
+  // 屏幕环绕
   if (player.x + player.w < 0) player.x = W;
   if (player.x > W) player.x = -player.w;
-
-  // Trail
-  player.trail.push({x: player.x, y: player.y, a: 0.5});
-  if (player.trail.length > 8) player.trail.shift();
-  for (var i = 0; i < player.trail.length; i++) player.trail[i].a *= 0.75;
-
-  // Camera - follow player up
-  var targetCam = Math.min(0, player.y - H * 0.45);
-  camY += (targetCam - camY) * 0.08;
-
-  // Death check - fell below visible area
-  if (player.y - camY > H + 120) {
-    state = 'dead';
-    sfx.die();
-    stopBGM();
-    shake = 15;
-    burst(player.x + player.w/2, player.y + player.h/2, 25, 120, themes[level-1].accent, 1);
-    setTimeout(function() {
-      document.getElementById('gameover').style.display = 'flex';
-    }, 400);
-    return;
-  }
-
-  // Coins
+  
+  // 金币收集
   for (var i = coins.length - 1; i >= 0; i--) {
     var c = coins[i];
     if (c.collected) continue;
     var dx = player.x + player.w/2 - c.x;
     var dy = player.y + player.h/2 - c.y;
-    if (dx*dx + dy*dy < 800) {
+    if (dx*dx + dy*dy < 400) {
       c.collected = true;
-      combo++;
-      score += 10 * combo;
-      sfx.coin(combo);
-      if (combo > 2) sfx.comboHit(combo);
-      shake = 4;
-      burst(c.x, c.y, 8, 100, '#ff0', 0.6);
-      if (combo > 1) {
-        var cb = document.getElementById('combo-box');
-        cb.textContent = combo + 'x 连击!';
-        cb.style.opacity = 1;
-        setTimeout(function(){cb.style.opacity=0}, 700);
-      }
+      score += 10;
     }
   }
-
-  // Spikes
-  for (var i = 0; i < spikes.length; i++) {
-    var s = spikes[i];
-    if (player.x + player.w > s.x + 2 && player.x < s.x + s.w - 2 &&
-        player.y + player.h > s.y + 2 && player.y < s.y + s.h) {
-      state = 'dead';
-      sfx.spike();
-      stopBGM();
-      shake = 15;
-      burst(player.x + player.w/2, player.y + player.h/2, 25, 120, '#f44', 1);
-      setTimeout(function() {
-        document.getElementById('gameover').style.display = 'flex';
-      }, 400);
-      return;
-    }
+  
+  // 死亡检查
+  if (player.y > H + 100) {
+    state = 'dead';
+    document.getElementById('gameover').style.display = 'flex';
+    return;
   }
-
-  // Goal
-  if (goalStar) {
-    var dx = player.x + player.w/2 - goalStar.x;
-    var dy = player.y + player.h/2 - goalStar.y;
-    if (dx*dx + dy*dy < 2500) {
-      if (level < 5) {
-        // Next level
-        sfx.levelUp();
-        level++;
-        score += 50;
-        burst(player.x + player.w/2, player.y + player.h/2, 30, 150, themes[level-1].plat, 1);
-        generateLevel(level);
-        state = 'play';
-      } else {
-        // Win!
-        state = 'won';
-        score += 100;
-        shake = 20;
-        sfx.win();
-        stopBGM();
-        burst(player.x+player.w/2, player.y+player.h/2, 50, 200, '#ff0', 2);
-        document.getElementById('fscore').textContent = score;
-        setTimeout(function() {
-          document.getElementById('winscreen').style.display = 'flex';
-        }, 800);
-      }
-    }
-  }
-
-  // Update HUD
+  
+  // 更新HUD
   document.getElementById('sc-box').textContent = '⚡ ' + score;
   document.getElementById('lv-box').textContent = '关卡 ' + level + '/5';
 }
 
+// 绘制游戏
 function drawGame(dt) {
-  var th = themes[level - 1];
-  var t = performance.now() / 1000;
-
-  // Background
-  ctx.fillStyle = th.bg;
+  // 背景
+  ctx.fillStyle = '#0a0a2a';
   ctx.fillRect(0, 0, W, H);
-
-  // Stars
-  ctx.fillStyle = '#fff';
-  for (var i = 0; i < stars.length; i++) {
-    var s = stars[i];
-    var sx = s.x % W;
-    var sy = ((s.y - camY * 0.15) % H + H) % H;
-    ctx.globalAlpha = 0.2 + Math.sin(t * 0.5 + i) * 0.15;
-    ctx.fillRect(sx, sy, s.s, s.s);
-  }
-  ctx.globalAlpha = 1;
-
-  // Grid lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-  ctx.lineWidth = 1;
-  for (var x = 0; x < W; x += 60) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-  }
-  var gridOff = ((-camY * 0.3) % 60 + 60) % 60;
-  for (var y = gridOff; y < H; y += 60) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-  }
-
-  // Draw platforms
+  
+  // 绘制平台
   for (var i = 0; i < platforms.length; i++) {
     var p = platforms[i];
-    var drawY = p.y - camY;
-    if (drawY > H + 60 || drawY < -60) continue;
-
     if (p.ground) {
-      // Ground: bright solid bar
-      ctx.fillStyle = th.plat;
-      ctx.fillRect(p.x, drawY, p.w, p.h);
-      // Glow on top
+      // 地面 - 明亮显眼
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillRect(p.x, drawY, p.w, 3);
-      // Bottom gradient
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.fillRect(p.x, drawY + p.h - 6, p.w, 6);
+      ctx.fillRect(p.x, p.y, p.w, 3);
     } else {
-      // Regular platform with glow
-      ctx.shadowColor = th.plat;
-      ctx.shadowBlur = 12;
-      ctx.fillStyle = th.plat;
-      ctx.fillRect(p.x, drawY, p.w, p.h);
-      ctx.shadowBlur = 0;
-      // Highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      ctx.fillRect(p.x + 3, drawY + 1, p.w - 6, 3);
-      // Moving indicator
-      if (p.moving) {
-        ctx.fillStyle = th.accent;
-        ctx.fillRect(p.x + p.w/2 - 5, drawY + 4, 10, p.h - 6);
-      }
+      // 普通平台
+      ctx.fillStyle = '#ff00ff';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(p.x + 2, p.y + 1, p.w - 4, 3);
     }
   }
-
-  // Spikes
-  ctx.fillStyle = '#ff3333';
-  for (var i = 0; i < spikes.length; i++) {
-    var s = spikes[i];
-    var sy = s.y - camY;
-    if (sy > H + 20 || sy < -20) continue;
-    var count = Math.floor(s.w / 10);
-    for (var j = 0; j < count; j++) {
-      var tx = s.x + j * (s.w / count) + s.w / count / 2;
-      ctx.beginPath();
-      ctx.moveTo(tx - 5, sy + s.h);
-      ctx.lineTo(tx, sy);
-      ctx.lineTo(tx + 5, sy + s.h);
-      ctx.fill();
-    }
-  }
-
-  // Coins
+  
+  // 绘制金币
   for (var i = 0; i < coins.length; i++) {
     var c = coins[i];
     if (c.collected) continue;
-    var cy = c.y - camY + Math.sin(t * 3 + c.phase) * 5;
-    if (cy > H + 20 || cy < -20) continue;
     ctx.fillStyle = '#ffdd00';
-    ctx.shadowColor = '#ffdd00';
-    ctx.shadowBlur = 10;
-    ctx.beginPath(); ctx.arc(c.x, cy, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#cc8800';
-    ctx.beginPath(); ctx.arc(c.x, cy, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+    ctx.fill();
   }
-
-  // Goal star
-  if (goalStar) {
-    var gy = goalStar.y - camY;
-    if (gy > -60 && gy < H + 60) {
-      var pulse = 0.6 + Math.sin(t * 4) * 0.4;
-      ctx.save();
-      ctx.translate(goalStar.x, gy);
-      ctx.rotate(t * 0.5);
-      ctx.fillStyle = 'rgba(255,238,0,' + (0.6 + pulse * 0.4) + ')';
-      ctx.shadowColor = '#ffee00';
-      ctx.shadowBlur = 25;
-      ctx.beginPath();
-      for (var i = 0; i < 5; i++) {
-        var a1 = Math.PI * 2 / 5 * i - Math.PI / 2;
-        var a2 = a1 + Math.PI / 5;
-        ctx.lineTo(Math.cos(a1) * 22, Math.sin(a1) * 22);
-        ctx.lineTo(Math.cos(a2) * 10, Math.sin(a2) * 10);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.restore();
-      // Label
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(level < 5 ? '▲ NEXT' : '★ GOAL', goalStar.x, gy - 32);
-    }
+  
+  // 绘制玩家
+  if (player) {
+    ctx.fillStyle = '#ff00ff';
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+    
+    // 眼睛和嘴巴
+    ctx.fillStyle = '#000';
+    var faceDir = Math.sign(player.vx) || 1;
+    ctx.fillRect(player.x + 8 + faceDir * 3, player.y + 10, 5, 6);
+    ctx.fillRect(player.x + 19 + faceDir * 3, player.y + 10, 5, 6);
+    ctx.fillRect(player.x + 12 + faceDir * 2, player.y + 22, 8, 3);
   }
-
-  // Player
-  if (player && (state === 'play' || state === 'dead')) {
-    // Trail
-    for (var i = 0; i < player.trail.length; i++) {
-      var tr = player.trail[i];
-      ctx.globalAlpha = tr.a * 0.2;
-      ctx.fillStyle = th.accent;
-      ctx.fillRect(tr.x, tr.y - camY, player.w, player.h);
-    }
-    ctx.globalAlpha = 1;
-
-    if (state === 'play') {
-      var px = player.x;
-      var py = player.y - camY;
-      // Body
-      ctx.fillStyle = th.accent;
-      ctx.shadowColor = th.accent;
-      ctx.shadowBlur = 14;
-      ctx.fillRect(px, py, player.w, player.h);
-      ctx.shadowBlur = 0;
-      // Eyes
-      ctx.fillStyle = '#000';
-      var ex = player.face * 3;
-      ctx.fillRect(px + 8 + ex, py + 10, 5, 6);
-      ctx.fillRect(px + 19 + ex, py + 10, 5, 6);
-      // Mouth
-      ctx.fillRect(px + 12 + ex, py + 22, 8, 3);
-    }
-  }
-
-  // Particles
-  for (var i = particles.length - 1; i >= 0; i--) {
-    var p = particles[i];
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vy += 200 * dt;
-    p.life -= dt;
-    if (p.life <= 0) { particles.splice(i, 1); continue; }
-    var alpha = p.life / p.max;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - p.sz/2, p.y - camY - p.sz/2, p.sz, p.sz);
-  }
-  ctx.globalAlpha = 1;
 }
 
-// Main loop
+// 主循环
 var lastTime = 0;
 function gameLoop(ts) {
   var dt = Math.min((ts - lastTime) / 1000, 0.05);
   lastTime = ts;
-
+  
   if (state === 'play') updateGame(dt);
-
-  // Shake
-  var sx = 0, sy = 0;
-  if (shake > 0) {
-    sx = (Math.random() - 0.5) * shake;
-    sy = (Math.random() - 0.5) * shake;
-    shake *= 0.88;
-    if (shake < 0.3) shake = 0;
-  }
-
-  ctx.save();
-  ctx.translate(sx, sy);
   drawGame(dt);
-  ctx.restore();
-
-  // Menu particles
-  if (state === 'menu' && particles && Math.random() < 0.06) {
-    addParticle(Math.random()*W, H+5, (Math.random()-0.5)*40, -(60+Math.random()*80),
-      ['#0ff','#f0f','#ff0'][Math.floor(Math.random()*3)], 2.5);
-  }
-  // Win fireworks
-  if (state === 'won' && particles && Math.random() < 0.15) {
-    burst(Math.random()*W, Math.random()*H*0.6, 10, 120,
-      ['#ff0','#f0f','#0ff','#0f0','#f44'][Math.floor(Math.random()*5)], 1);
-  }
-
+  
   requestAnimationFrame(gameLoop);
 }
 
-// Start
+// 开始游戏
 function startGame() {
-  initAudio();
-  sfx.menuClick();
   document.getElementById('menu').style.display = 'none';
   document.getElementById('gameover').style.display = 'none';
   document.getElementById('winscreen').style.display = 'none';
-  score = 0; level = 1; combo = 0;
-  particles = [];
+  score = 0; level = 1;
   generateLevel(1);
   state = 'play';
-  startBGM();
 }
 
 function retry() {
-  sfx.menuClick();
   document.getElementById('gameover').style.display = 'none';
-  combo = 0;
   generateLevel(level);
   state = 'play';
-  startBGM();
 }
 
-// Init particles for menu
+// 初始化
 particles = [];
 requestAnimationFrame(gameLoop);
 </script>
