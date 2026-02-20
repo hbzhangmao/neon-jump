@@ -12,10 +12,9 @@ canvas{display:block;position:fixed;top:0;left:0;z-index:1}
 #hud{position:absolute;top:12px;left:0;width:100%;display:flex;justify-content:space-between;padding:0 20px;font-size:20px;font-weight:bold}
 #sc-box{color:#0ff}
 #lv-box{color:#f0f}
-#combo-box{position:absolute;top:25%;left:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:900;color:#ff0;opacity:0;transition:opacity 0.3s}
 .screen{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:auto}
 #menu{background:radial-gradient(ellipse at center,#1a0a3e,#0a0a2a)}
-#gameover,#winscreen{background:rgba(10,10,30,0.95);display:none}
+#gameover{background:rgba(10,10,30,0.95);display:none}
 h1{font-size:60px;font-weight:900;background:linear-gradient(135deg,#0ff,#f0f,#ff0);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px}
 .sub{color:#888;font-size:16px;margin-bottom:30px}
 button{padding:14px 40px;font-size:18px;border:2px solid #0ff;background:transparent;color:#0ff;border-radius:30px;cursor:pointer;margin:8px;pointer-events:auto}
@@ -35,8 +34,7 @@ button:hover{background:#0ff;color:#000}
 <body>
 <canvas id="gc"></canvas>
 <div id="ui">
-  <div id="hud"><div id="sc-box">⚡ 0</div><div id="lv-box">关卡 1/5</div></div>
-  <div id="combo-box"></div>
+  <div id="hud"><div id="sc-box">⚡ 0</div><div id="lv-box">关卡 1</div></div>
   <div id="menu" class="screen">
     <h1>霓虹跳跃</h1>
     <div class="sub">在霓虹灯光中跃向巅峰</div>
@@ -48,11 +46,6 @@ button:hover{background:#0ff;color:#000}
     <div class="info">别灰心，再试一次</div>
     <button class="pink" onclick="retry()">重新挑战</button>
   </div>
-  <div id="winscreen" class="screen">
-    <div class="big" style="color:#ff0">🎉 通关!</div>
-    <div class="info">总分: <span id="fscore">0</span></div>
-    <button onclick="startGame()">再来一次</button>
-  </div>
 </div>
 <div id="mctrl">
   <div class="mb" id="ml">◀</div>
@@ -60,7 +53,7 @@ button:hover{background:#0ff;color:#000}
   <div class="mb" id="mr">▶</div>
 </div>
 <script>
-// 简化的游戏逻辑 - 确保基础功能可用
+// 简单可靠的游戏逻辑
 var cv = document.getElementById('gc');
 var ctx = cv.getContext('2d');
 var W, H;
@@ -75,7 +68,7 @@ window.addEventListener('resize', resize);
 // 游戏状态
 var state = 'menu';
 var score = 0, level = 1;
-var player, platforms, coins, particles;
+var player, platforms, coins;
 
 // 输入控制
 var keys = {};
@@ -109,7 +102,6 @@ touchBind('mbj', function(v){mj=v});
 function generateLevel(lv) {
   platforms = [];
   coins = [];
-  particles = [];
   
   // 地面 - 非常显眼
   platforms.push({x: 0, y: H - 50, w: W, h: 50, ground: true});
@@ -121,13 +113,13 @@ function generateLevel(lv) {
   };
   
   // 平台
-  var platCount = 6 + lv * 2;
+  var platCount = 6;
   var curY = H - 50;
   var curX = W / 2;
   
   for (var i = 0; i < platCount; i++) {
-    curY -= 55 + Math.random() * 25;
-    curX += (Math.random() - 0.5) * 180;
+    curY -= 60 + Math.random() * 20;
+    curX += (Math.random() - 0.5) * 200;
     curX = Math.max(30, Math.min(W - 110, curX));
     
     platforms.push({x: curX, y: curY, w: 80, h: 16});
@@ -209,7 +201,7 @@ function updateGame(dt) {
   
   // 更新HUD
   document.getElementById('sc-box').textContent = '⚡ ' + score;
-  document.getElementById('lv-box').textContent = '关卡 ' + level + '/5';
+  document.getElementById('lv-box').textContent = '关卡 ' + level;
 }
 
 // 绘制游戏
@@ -276,7 +268,6 @@ function gameLoop(ts) {
 function startGame() {
   document.getElementById('menu').style.display = 'none';
   document.getElementById('gameover').style.display = 'none';
-  document.getElementById('winscreen').style.display = 'none';
   score = 0; level = 1;
   generateLevel(1);
   state = 'play';
@@ -289,7 +280,6 @@ function retry() {
 }
 
 // 初始化
-particles = [];
 requestAnimationFrame(gameLoop);
 </script>
 </body>
